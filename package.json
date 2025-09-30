@@ -1,0 +1,20 @@
+{
+  "name": "youtube-info-api",
+  "version": "1.0.0",
+  "description": "API para obtener información y descargar videos de YouTube usando yt-dlp en Node.js",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "author": "Deylin",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "yt-dlp-exec": "^1.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
