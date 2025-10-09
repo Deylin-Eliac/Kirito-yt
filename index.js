@@ -4,8 +4,6 @@ import crypto from "crypto";
 import axios from "axios";
 
 const app = express();
-app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
 
 const savetube = {
@@ -23,10 +21,7 @@ const savetube = {
     "user-agent": "Postify/1.0.0",
   },
   crypto: {
-    hexToBuffer: (hexString) => {
-      const matches = hexString.match(/.{1,2}/g);
-      return Buffer.from(matches.join(""), "hex");
-    },
+    hexToBuffer: (hexString) => Buffer.from(hexString.match(/.{1,2}/g).join(""), "hex"),
     decrypt: async (enc) => {
       const secretKey = "C5D58EF67A7584E4A29F6C35BBC4EB12";
       const data = Buffer.from(enc, "base64");
@@ -34,18 +29,12 @@ const savetube = {
       const content = data.slice(16);
       const key = savetube.crypto.hexToBuffer(secretKey);
       const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
-      let decrypted = decipher.update(content);
-      decrypted = Buffer.concat([decrypted, decipher.final()]);
+      let decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
       return JSON.parse(decrypted.toString());
     },
   },
   isUrl: (str) => {
-    try {
-      new URL(str);
-      return /youtube.com|youtu.be/.test(str);
-    } catch (_) {
-      return false;
-    }
+    try { new URL(str); return /youtube.com|youtu.be/.test(str); } catch (_) { return false; }
   },
   youtube: (url) => {
     const patterns = [
@@ -53,9 +42,7 @@ const savetube = {
       /youtube.com\/embed\/([a-zA-Z0-9_-]{11})/,
       /youtu.be\/([a-zA-Z0-9_-]{11})/,
     ];
-    for (let pattern of patterns) {
-      if (pattern.test(url)) return url.match(pattern)[1];
-    }
+    for (let pattern of patterns) if (pattern.test(url)) return url.match(pattern)[1];
     return null;
   },
   request: async (endpoint, data = {}, method = "post") => {
@@ -112,33 +99,47 @@ const savetube = {
       return { status: false, code: 500, error: error.message };
     }
   },
-};
+});
 
-app.post("/ytmp3", async (req, res) => {
-  const { query } = req.body;
-  if (!query) return res.status(400).json({ status: false, error: "No query provided" });
+// GET /ytmp3?url=...
+app.get("/ytmp3", async (req, res) => {
+  const urlParam = req.query.url;
+  if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
+
   try {
-    let url = savetube.isUrl(query) ? query : (await yts.search({ query, pages: 1 })).videos[0]?.url;
+    const url = savetube.isUrl(urlParam)
+      ? urlParam
+      : (await yts.search({ query: urlParam, pages: 1 })).videos[0]?.url;
+
     if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
+
     const dl = await savetube.download(url, "audio");
     if (!dl.status) return res.status(500).json(dl);
-    return res.json(dl.result);
+
+    res.json(dl.result);
   } catch (e) {
-    return res.status(500).json({ status: false, error: e.message });
+    res.status(500).json({ status: false, error: e.message });
   }
 });
 
-app.post("/ytmp4", async (req, res) => {
-  const { query } = req.body;
-  if (!query) return res.status(400).json({ status: false, error: "No query provided" });
+// GET /ytmp4?url=...
+app.get("/ytmp4", async (req, res) => {
+  const urlParam = req.query.url;
+  if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
+
   try {
-    let url = savetube.isUrl(query) ? query : (await yts.search({ query, pages: 1 })).videos[0]?.url;
+    const url = savetube.isUrl(urlParam)
+      ? urlParam
+      : (await yts.search({ query: urlParam, pages: 1 })).videos[0]?.url;
+
     if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
+
     const dl = await savetube.download(url, "video");
     if (!dl.status) return res.status(500).json(dl);
-    return res.json(dl.result);
+
+    res.json(dl.result);
   } catch (e) {
-    return res.status(500).json({ status: false, error: e.message });
+    res.status(500).json({ status: false, error: e.message });
   }
 });
 
