@@ -101,7 +101,7 @@ const savetube = {
   },
 });
 
-// GET /ytmp3?url=...
+// --- RUTAS GET ---
 app.get("/ytmp3", async (req, res) => {
   const urlParam = req.query.url;
   if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
@@ -124,7 +124,6 @@ app.get("/ytmp3", async (req, res) => {
   }
 });
 
-// GET /ytmp4?url=...
 app.get("/ytmp4", async (req, res) => {
   const urlParam = req.query.url;
   if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
