@@ -1,64 +1,73 @@
-import express from 'express'
-import { existsSync } from 'fs'
-import { join } from 'path'
-import { exec } from 'child_process'
-import ytdlp from 'yt-dlp-exec'
+import express from 'express';
+import axios from 'axios';
+import cheerio from 'cheerio';
+import ytDlp from 'yt-dlp-exec';
 
-const app = express()
-const PORT = process.env.PORT || 5000
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Ruta del archivo de cookies (formato Netscape)
-const COOKIES_FILE = join(process.cwd(), 'cookies.txt')
-
-app.get('/api/video', async (req, res) => {
-  const video_url = req.query.url
-  if (!video_url) {
-    return res.status(400).json({ status: false, error: "Parámetro 'url' no encontrado" })
-  }
+app.get('/download', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'Debes pasar la URL de YouTube' });
 
   try {
-    const ydl_opts = {
-      quiet: true,
-      no_warnings: true,
-      force_ipv4: true,
-      skip_download: true,
-      cookiefile: existsSync(COOKIES_FILE) ? COOKIES_FILE : undefined,
-      dump_single_json: true
-    }
+    // === Intento 1: Scraper Y2Mate ===
+    try {
+      const html = await axios.get('https://www-y2mate.com/es39/youtube-to-mp3/', {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
 
-    // Extraemos info usando yt-dlp-exec
-    const info = await ytdlp(video_url, ydl_opts)
+      const $ = cheerio.load(html.data);
 
-    // Elegir el mejor formato con video+audio
-    const video_format = info.formats
-      .filter(f => f.vcodec !== 'none' && f.acodec !== 'none')
-      .sort((a, b) => (b.height || 0) - (a.height || 0))[0]
+      // Preparar POST para analizar
+      const formData = new URLSearchParams();
+      formData.append('url', url);
+      formData.append('format', 'mp3');
+      formData.append('quality', '128');
 
-    let filesize = undefined
-    if (video_format?.filesize) {
-      filesize = Math.round(video_format.filesize / (1024 * 1024) * 100) / 100
-    }
+      const response = await axios.post('https://www-y2mate.com/mates/en68/analyze/ajax', formData.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0',
+        }
+      });
 
-    const response = {
-      status: true,
-      creator: "Deylin",
-      res: {
-        title: info.title,
-        artist: info.uploader,
-        duration: info.duration, // segundos
-        thumbnail: info.thumbnail,
-        format: video_format?.ext || 'mp4',
-        quality: `${video_format?.height || 'Desconocido'}p`,
-        filesize: filesize ? `${filesize} MB` : 'Desconocido',
-        url: video_format?.url
+      const $$ = cheerio.load(response.data.result || '');
+      const downloadUrl = $$('a').attr('href');
+
+      if (downloadUrl) {
+        return res.json({ method: 'y2mate', mp3: downloadUrl });
       }
+    } catch (err) {
+      console.log('Y2Mate falló, usando yt-dlp...', err.message);
     }
 
-    return res.json(response)
-  } catch (err) {
-    console.error(err)
-    return res.status(500).json({ status: false, error: err.message })
-  }
-})
+    // === Intento 2: yt-dlp ===
+    try {
+      const info = await ytDlp(url, {
+        dumpSingleJson: true,
+        format: 'bestaudio',
+        noWarnings: true,
+        noCheckCertificates: true,
+        preferFreeFormats: true
+      });
 
-app.listen(PORT, () => console.log(`Server listening on http://0.0.0.0:${PORT}`))
+      const mp3Format = info.formats.find(f => f.ext === 'm4a' || f.ext === 'webm' || f.ext === 'mp3');
+      if (!mp3Format) throw new Error('No se pudo obtener formato de audio');
+
+      return res.json({
+        method: 'yt-dlp',
+        title: info.title,
+        uploader: info.uploader,
+        mp3: mp3Format.url
+      });
+    } catch (err) {
+      return res.status(500).json({ error: 'Falló yt-dlp: ' + err.message });
+    }
+
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
