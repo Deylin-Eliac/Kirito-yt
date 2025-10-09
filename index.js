@@ -1,22 +1,12 @@
 import express from "express";
-import cors from "cors";
-import bodyParser from "body-parser";
 import yts from "yt-search";
-import fetch from "node-fetch";
-import Jimp from "jimp";
 import crypto from "crypto";
 import axios from "axios";
 
 const app = express();
-app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-
-async function resizeImage(buffer, size = 300) {
-  const image = await Jimp.read(buffer);
-  return image.resize(size, size).getBufferAsync(Jimp.MIME_JPEG);
-}
 
 const savetube = {
   api: {
@@ -124,19 +114,12 @@ const savetube = {
   },
 };
 
-// Ruta para MP3
 app.post("/ytmp3", async (req, res) => {
   const { query } = req.body;
   if (!query) return res.status(400).json({ status: false, error: "No query provided" });
   try {
-    let url;
-    if (savetube.isUrl(query)) {
-      url = query;
-    } else {
-      const search = await yts.search({ query, pages: 1 });
-      if (!search.videos.length) return res.status(404).json({ status: false, error: "No se encontró nada" });
-      url = search.videos[0].url;
-    }
+    let url = savetube.isUrl(query) ? query : (await yts.search({ query, pages: 1 })).videos[0]?.url;
+    if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
     const dl = await savetube.download(url, "audio");
     if (!dl.status) return res.status(500).json(dl);
     return res.json(dl.result);
@@ -145,19 +128,12 @@ app.post("/ytmp3", async (req, res) => {
   }
 });
 
-// Ruta para MP4
 app.post("/ytmp4", async (req, res) => {
   const { query } = req.body;
   if (!query) return res.status(400).json({ status: false, error: "No query provided" });
   try {
-    let url;
-    if (savetube.isUrl(query)) {
-      url = query;
-    } else {
-      const search = await yts.search({ query, pages: 1 });
-      if (!search.videos.length) return res.status(404).json({ status: false, error: "No se encontró nada" });
-      url = search.videos[0].url;
-    }
+    let url = savetube.isUrl(query) ? query : (await yts.search({ query, pages: 1 })).videos[0]?.url;
+    if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
     const dl = await savetube.download(url, "video");
     if (!dl.status) return res.status(500).json(dl);
     return res.json(dl.result);
@@ -166,8 +142,6 @@ app.post("/ytmp4", async (req, res) => {
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("API YT MP3/MP4 funcionando ✅");
-});
+app.get("/", (req, res) => res.send("API YT MP3/MP4 funcionando ✅"));
 
 app.listen(PORT, () => console.log(`Servidor iniciado en puerto ${PORT}`));
