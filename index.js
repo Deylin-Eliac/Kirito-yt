@@ -29,7 +29,7 @@ const savetube = {
       const content = data.slice(16);
       const key = savetube.crypto.hexToBuffer(secretKey);
       const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
-      let decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
+      const decrypted = Buffer.concat([decipher.update(content), decipher.final()]);
       return JSON.parse(decrypted.toString());
     },
   },
@@ -83,7 +83,7 @@ const savetube = {
         quality: type === "audio" ? "mp3" : "720p",
         key: decrypted.key,
       });
-      if (!downloadData.data.data?.downloadUrl)
+      if (!downloadData.data.data || !downloadData.data.data.downloadUrl)
         return { status: false, code: 500, error: "No se pudo obtener link de descarga" };
       return {
         status: true,
@@ -107,11 +107,13 @@ app.get("/ytmp3", async (req, res) => {
   if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
 
   try {
-    const url = savetube.isUrl(urlParam)
-      ? urlParam
-      : (await yts.search({ query: urlParam, pages: 1 })).videos[0]?.url;
-
-    if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
+    let url = urlParam;
+    if (!savetube.isUrl(url)) {
+      const search = await yts.search({ query: urlParam, pages: 1 });
+      if (!search.videos || search.videos.length === 0)
+        return res.status(404).json({ status: false, error: "No se encontró nada" });
+      url = search.videos[0].url;
+    }
 
     const dl = await savetube.download(url, "audio");
     if (!dl.status) return res.status(500).json(dl);
@@ -128,11 +130,13 @@ app.get("/ytmp4", async (req, res) => {
   if (!urlParam) return res.status(400).json({ status: false, error: "No URL provided" });
 
   try {
-    const url = savetube.isUrl(urlParam)
-      ? urlParam
-      : (await yts.search({ query: urlParam, pages: 1 })).videos[0]?.url;
-
-    if (!url) return res.status(404).json({ status: false, error: "No se encontró nada" });
+    let url = urlParam;
+    if (!savetube.isUrl(url)) {
+      const search = await yts.search({ query: urlParam, pages: 1 });
+      if (!search.videos || search.videos.length === 0)
+        return res.status(404).json({ status: false, error: "No se encontró nada" });
+      url = search.videos[0].url;
+    }
 
     const dl = await savetube.download(url, "video");
     if (!dl.status) return res.status(500).json(dl);
