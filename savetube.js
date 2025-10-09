@@ -1,98 +1,79 @@
 import axios from 'axios';
 import crypto from 'crypto';
 
-const ogmp3 = {
+const savetube = {
   api: {
-    base: "https://api3.apiapi.lat",
-    endpoints: {
-      a: "https://api5.apiapi.lat",
-      b: "https://api.apiapi.lat",
-      c: "https://api3.apiapi.lat"
-    }
+    base: "https://media.savetube.me/api",
+    cdn: "/random-cdn",
+    info: "/v2/info", 
+    download: "/download"
   },
-
   headers: {
-    'authority': 'api.apiapi.lat',
+    'accept': '*/*',
     'content-type': 'application/json',
-    'origin': 'https://ogmp3.lat',
-    'referer': 'https://ogmp3.lat/',
+    'origin': 'https://yt.savetube.me',
+    'referer': 'https://yt.savetube.me/',
     'user-agent': 'Postify/1.0.0'
   },
+  formats: ['144', '240', '360', '480', '720', '1080', 'mp3'],
 
-  formats: {
-    video: ['240', '360', '480', '720', '1080'],
-    audio: ['64', '96', '128', '192', '256', '320']
-  },
-
-  default_fmt: {
-    video: '720',
-    audio: '320'
-  },
-
-  restrictedTimezones: new Set(["-330", "-420", "-480", "-540"]),
-
-  utils: {
-    hash: () => {
-      const array = new Uint8Array(16);
-      crypto.getRandomValues(array);
-      return Array.from(array, byte => byte.toString(16).padStart(2, "0")).join("");
+  crypto: {
+    hexToBuffer: (hexString) => {
+      const matches = hexString.match(/.{1,2}/g);
+      return Buffer.from(matches.join(''), 'hex');
     },
 
-    encoded: (str) => {
-      let result = "";
-      for (let i = 0; i < str.length; i++) {
-        result += String.fromCharCode(str.charCodeAt(i) ^ 1);
-      }
-      return result;
-    },
+    decrypt: async (enc) => {
+      try {
+        const secretKey = 'C5D58EF67A7584E4A29F6C35BBC4EB12';
+        const data = Buffer.from(enc, 'base64');
+        const iv = data.slice(0, 16);
+        const content = data.slice(16);
+        const key = savetube.crypto.hexToBuffer(secretKey);
 
-    enc_url: (url, separator = ",") => {
-      const codes = [];
-      for (let i = 0; i < url.length; i++) {
-        codes.push(url.charCodeAt(i));
+        const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+        let decrypted = decipher.update(content);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+
+        return JSON.parse(decrypted.toString());
+      } catch (error) {
+        throw new Error(`${error.message}`);
       }
-      return codes.join(separator).split(separator).reverse().join(separator);
     }
   },
 
-  isUrl: str => {
-    try {
-      const url = new URL(str);
-      const hostname = url.hostname.toLowerCase();
-      const b = [/^(.+\.)?youtube\.com$/, /^(.+\.)?youtube-nocookie\.com$/, /^youtu\.be$/];
-      return b.some(a => a.test(hostname)) && !url.searchParams.has("playlist");
-    } catch (_) {
-      return false;
-    }
+  isUrl: str => { 
+    try { 
+      new URL(str); 
+      return true; 
+    } catch (_) { 
+      return false; 
+    } 
   },
 
   youtube: url => {
     if (!url) return null;
-    const b = [
+    const a = [
       /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
       /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
       /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
       /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
       /youtu\.be\/([a-zA-Z0-9_-]{11})/
     ];
-    for (let a of b) {
-      if (a.test(url)) return url.match(a)[1];
+    for (let b of a) {
+      if (b.test(url)) return url.match(b)[1];
     }
     return null;
   },
 
   request: async (endpoint, data = {}, method = 'post') => {
     try {
-      const ae = Object.values(ogmp3.api.endpoints);
-      const be = ae[Math.floor(Math.random() * ae.length)];
-
-      const fe = endpoint.startsWith('http') ? endpoint : `${be}${endpoint}`;
-
       const { data: response } = await axios({
         method,
-        url: fe,
+        url: `${endpoint.startsWith('http') ? '' : savetube.api.base}${endpoint}`,
         data: method === 'post' ? data : undefined,
-        headers: ogmp3.headers
+        params: method === 'get' ? data : undefined,
+        headers: savetube.headers
       });
       return {
         status: true,
@@ -108,197 +89,84 @@ const ogmp3 = {
     }
   },
 
-  async checkStatus(id) {
-    try {
-      const c = this.utils.hash();
-      const d = this.utils.hash();
-      const endpoint = `/${c}/status/${this.utils.encoded(id)}/${d}/`;
-
-      const response = await this.request(endpoint, {
-        data: id
-      });
-
-      return response;
-    } catch (error) {
-      return {
-        status: false,
-        code: 500,
-        error: error.message
-      };
-    }
+  getCDN: async () => {
+    const response = await savetube.request(savetube.api.cdn, {}, 'get');
+    if (!response.status) return response;
+    return {
+      status: true,
+      code: 200,
+      data: response.data.cdn
+    };
   },
 
-  async checkProgress(data) {
-    try {
-      let attempts = 0;
-      let maxAttempts = 300;
-
-      while (attempts < maxAttempts) {
-        attempts++;
-
-        const res = await this.checkStatus(data.i);
-        if (!res.status) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          continue;
-        }
-
-        const stat = res.data;
-        if (stat.s === "C") {
-          return stat;
-        }
-
-        if (stat.s === "P") {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          continue;
-        }
-
-        return null;
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  },
-
-  download: async (link, format, type = 'video') => {
+  download: async (link, format) => {
     if (!link) {
       return {
         status: false,
         code: 400,
-        error: "¿Que es lo que descarga? ingresa en link idiota"
+        error: "[ ❌ ] ¿Dónde está el link? No puedes descargar sin link "
       };
     }
 
-    if (!ogmp3.isUrl(link)) {
+    if (!savetube.isUrl(link)) {
       return {
         status: false,
         code: 400,
-        error: "Ese link es invalido pon en link de un video de youtube valido idiotas 🗿"
+        error: "[ ❌ ] ¿Qué link pusiste? 🗿 Deberías poner un link de YouTube, si vas a descargar de ahí 👍🏻"
       };
     }
 
-    if (type !== 'video' && type !== 'audio') {
+    if (!format || !savetube.formats.includes(format)) {
       return {
         status: false,
         code: 400,
-        error: "Elejir video o audio?"
+        error: "*[ ❌ ] El formato no está disponible, elige uno de los que ya están disponibles, no busques lo que no hay 🗿*",
+        available_fmt: savetube.formats
       };
     }
 
-    if (!format) {
-      format = type === 'audio' ? ogmp3.default_fmt.audio : ogmp3.default_fmt.video;
-    }
-
-    const valid_fmt = type === 'audio' ? ogmp3.formats.audio : ogmp3.formats.video;
-    if (!valid_fmt.includes(format)) {
-      return {
-        status: false,
-        code: 400,
-        error: `Formato ${format} no es valido para ${type} pero puedes elegir unos de estos: ${valid_fmt.join(', ')}`
-      };
-    }
-
-    const id = ogmp3.youtube(link);
+    const id = savetube.youtube(link);
     if (!id) {
       return {
         status: false,
         code: 400,
-        error: "Donde pito esta la ID del video? no puedo extraerlo hdp"
+        error: "*[ ❌ ] No se puede extraer el enlace de YouTube, asegúrate de que el enlace sea el correcto para evitar esto nuevamente 😂*"
       };
     }
 
     try {
-      let retries = 0;
-      const maxRetries = 20;
+      const cdnx = await savetube.getCDN();
+      if (!cdnx.status) return cdnx;
+      const cdn = cdnx.data;
 
-      while (retries < maxRetries) {
-        retries++;
-        const c = ogmp3.utils.hash();
-        const d = ogmp3.utils.hash();
-        const req = {
-          data: ogmp3.utils.encoded(link),
-          format: type === 'audio' ? "0" : "1",
-          referer: "https://ogmp3.cc",
-          mp3Quality: type === 'audio' ? format : null,
-          mp4Quality: type === 'video' ? format : null,
-          userTimeZone: new Date().getTimezoneOffset().toString()
-        };
+      const result = await savetube.request(`https://${cdn}${savetube.api.info}`, {
+        url: `https://www.youtube.com/watch?v=${id}`
+      });
+      if (!result.status) return result;
+      const decrypted = await savetube.crypto.decrypt(result.data.data);
 
-        const resx = await ogmp3.request(
-          `/${c}/init/${ogmp3.utils.enc_url(link)}/${d}/`,
-          req
-        );
-
-        if (!resx.status) {
-          if (retries === maxRetries) return resx;
-          continue;
-        }
-
-        const data = resx.data;
-        if (data.le) {
-          return {
-            status: false,
-            code: 400,
-            error: "La duración del video es demasiado larga, amigo. El máximo es de 3 horas, no puedes superar eso, ¿entendido? 👍🏻"
-          };
-        }
-
-        if (data.i === "blacklisted") {
-          const limit = ogmp3.restrictedTimezones.has(new Date().getTimezoneOffset().toString()) ? 5 : 100;
-          return {
-            status: false,
-            code: 429,
-            error: `Limite de descargas diarias (${limit}) alcanzados, intente de nuevo mas tardes.`
-          };
-        }
-
-        if (data.e || data.i === "invalid") {
-          return {
-            status: false,
-            code: 400,
-            error: "El video no existe, idiota. No sé si fue eliminado o si YouTube lo restringió... no tengo idea 🤷🏻"
-          };
-        }
-
-        if (data.s === "C") {
-          return {
-            status: true,
-            code: 200,
-            result: {
-              title: data.t || "Kagak tau",
-              type: type,
-              format: format,
-              thumbnail: `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
-              download: `${ogmp3.api.base}/${ogmp3.utils.hash()}/download/${ogmp3.utils.encoded(data.i)}/${ogmp3.utils.hash()}/`,
-              id: id,
-              quality: format
-            }
-          };
-        }
-
-        const prod = await ogmp3.checkProgress(data);
-        if (prod && prod.s === "C") {
-          return {
-            status: true,
-            code: 200,
-            result: {
-              title: prod.t || "Kagak tau",
-              type: type,
-              format: format,
-              thumbnail: `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
-              download: `${ogmp3.api.base}/${ogmp3.utils.hash()}/download/${ogmp3.utils.encoded(prod.i)}/${ogmp3.utils.hash()}/`,
-              id: id,
-              quality: format
-            }
-          };
-        }
-      }
+      const dl = await savetube.request(`https://${cdn}${savetube.api.download}`, {
+        id: id,
+        downloadType: format === 'mp3' ? 'audio' : 'video',
+        quality: format === 'mp3' ? '128' : format,
+        key: decrypted.key
+      });
 
       return {
-        status: false,
-        code: 500,
-        error: "Estoy exhausto, idiota... Ya intenté hacer la solicitud varias veces y sigue sin funcionar, así que dejaré la solicitud para más tarde, ¡hasta luego! 😂"
+        status: true,
+        code: 200, 
+        result: {
+          title: decrypted.title || "Sin tittle",
+          type: format === 'mp3' ? 'audio' : 'video',
+          format: format,
+          thumbnail: decrypted.thumbnail || `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+          download: dl.data.data.downloadUrl,
+          id: id,
+          key: decrypted.key,
+          duration: decrypted.duration,
+          quality: format === 'mp3' ? '128' : format,
+          downloaded: dl.data.data.downloaded || false
+        }
       };
 
     } catch (error) {
@@ -311,4 +179,4 @@ const ogmp3 = {
   }
 };
 
-export { ogmp3 };
+export { savetube };
