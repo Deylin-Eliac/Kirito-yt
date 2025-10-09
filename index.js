@@ -146,6 +146,8 @@ app.get("/ytmp4", async (req, res) => {
   }
 });
 
+// --- HOME ---
 app.get("/", (req, res) => res.send("API YT MP3/MP4 funcionando ✅"));
 
+// --- INICIO SERVIDOR ---
 app.listen(PORT, () => console.log(`Servidor iniciado en puerto ${PORT}`));
